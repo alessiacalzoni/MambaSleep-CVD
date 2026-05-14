@@ -1,0 +1,55 @@
+paths:
+    data_folder: "sleepfm-clinical/deploy/processed_data/shhs"
+    checkpoint: "checkpoints"
+
+csv_config:
+    original_csv_file: "shhs_csv/results/shhs1_events_summary_from_summary_survival_not_filtered_my_emb.csv"
+    demographic_csv_file: "shhs_csv/shhs1-dataset-0.21.0.csv"
+    demographic_stratification_var: ['gender', 'age_s']
+
+model_config:
+    modalities: {
+        "eeg": ["EEG", "EEG"],
+        "eog": ["EOG", "EOG"],
+        "ecg": ["ECG"]
+    }
+    # Sampling rates in Hz (direct, no conversion needed)
+    sampling_rate_hz: {
+        "eeg": 128,
+        "eog": 128,
+        "ecg": 128
+    }
+    # Output resolution: each token represents R_out seconds of signal
+    # patch_size = Fs * R_out (total downsampling per tokenizer)
+    # EEG: 128 * 1 = 128, EOG: 128 * 1 = 128, ECG: 128 * 1 = 128
+    resolution_output_embedding_s: 5
+    mamba_config: {
+        "d_model": 64,
+        "d_state": 16,
+        "d_conv": 4,
+        "expand": 2,
+        "n_layers": 2,
+        "final_pooling": "avg",
+        "norm_type": "layer"
+    }
+    block_model: 'coupled_mamba'
+    use_demographic_features: True
+    dropout: 0.1
+
+training_config:
+    batch_size: 32
+    lr: 0.002
+    weight_decay: 0.1
+    gamma: null
+    alpha: null
+    pos_weight_factor: 1
+    epochs: 100
+    accumulate_grad_batches: 1
+    num_workers: 4
+    split_path: "shhs_csv/results/reproducibility/events/gender_age_s_BMI/shhs1_events_summary_from_events_survival_not_filtered_my_emb_split.json"
+    random_state: 42
+    save_splits: True
+    patience: 15 
+
+wandb_config:
+    project_name: "PSG_cardiovascular_survival_from_summary_raw"

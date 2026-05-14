@@ -1,0 +1,60 @@
+paths:
+    data_folder: "PSG_data"
+    checkpoint: "checkpoints"
+
+csv_config:
+    original_csv_file: "shhs_csv/results/shhs1_events_summary_from_summary_survival_not_filtered_my_emb.csv"
+    demographic_csv_file: "shhs_csv/shhs1-dataset-0.21.0.csv"
+    demographic_stratification_var: ['gender', 'age_s', 'BMI', 'med']
+
+model_config:
+    modalities: {
+        "eeg": [
+            "C4-A1",
+            "C3-A2"
+        ],
+        "eog": [
+            "EOG(L)-PG1",
+            "EOG(R)-PG1"
+        ],
+        "ecg": [
+            "ECG"
+        ]
+    }
+    resolution_input_embedding_s: {
+        "eeg": 1,
+        "eog": 1,
+        "ecg": 5
+    }
+    resolution_output_embedding_s: 5
+    pooling_config: "avg"
+    mamba_config: {
+        "d_model": 64,
+        "d_state": 16,
+        "d_conv": 4,
+        "expand": 2,
+        "n_layers": 2,
+        "final_pooling": "avg",
+        "norm_type": "layer"
+    }
+    block_model: 'coupled_mamba'
+    use_demographic_features: False
+    dropout: 0.1
+
+training_config:
+    batch_size: 32
+    lr: 0.002
+    weight_decay: 0.1
+    gamma: null
+    alpha: null
+    pos_weight_factor: 1
+    epochs: 100
+    accumulate_grad_batches: 1
+    num_workers: 4
+    split_path: "shhs_csv/results/reproducibility/events/gender_age_s_BMI/shhs1_events_summary_from_events_survival_not_filtered_my_emb_split.json"
+    random_state: 42
+    save_splits: True
+    patience: 15 
+
+wandb_config:
+    project_name: "PSG_cardiovascular_survival_from_summary"

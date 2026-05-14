@@ -1,0 +1,48 @@
+paths:
+    data_folder: "PSG_data"
+    checkpoint: "checkpoints"
+
+csv_config:
+    original_csv_file: "shhs_csv/results/shhs1_events_summary_from_summary_survival_not_filtered_my_emb.csv"
+    demographic_csv_file: "shhs_csv/shhs1-dataset-0.21.0.csv"
+    demographic_stratification_var: ['gender', 'age_s', 'BMI', 'med']
+
+model_config:
+    modalities: {
+        "eog": [
+            "EOG(L)-PG1",
+            "EOG(R)-PG1"
+        ]
+    }
+    resolution_input_embedding_s: {
+        "eog": 1
+    }
+    resolution_output_embedding_s: 5
+    lstm_config: {
+        "embed_dim": 128, # tengo le stesse configurazioni di sleepfm 
+        "num_heads": 4,
+        "num_layers": 2,
+        "pooling_head": 4,
+        "dropout": 0.3,
+        "max_seq_length": 6480
+    }
+    block_model: 'lstm'
+    use_demographic_features: False
+
+training_config:
+    batch_size: 8
+    lr: 0.0001
+    weight_decay: 0.02
+    gamma: null
+    alpha: null
+    pos_weight_factor: 1
+    epochs: 100
+    accumulate_grad_batches: 4
+    num_workers: 4
+    split_path: "shhs_csv/results/reproducibility/events/gender_age_s_BMI/shhs1_events_summary_from_events_survival_not_filtered_my_emb_split.json"
+    random_state: 42
+    save_splits: True
+    patience: 15 
+
+wandb_config:
+    project_name: "PSG_cardiovascular_survival_from_summary"
