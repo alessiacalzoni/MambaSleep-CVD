@@ -6,22 +6,16 @@ from einops import rearrange
 from typing import Optional
 import sys
 import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from scripts.sources.base_system.base_system import BaseSystem
-from scripts.sources.models.other_model_blocks import MambaFusionModel, AttentionModel,JointAttentionModel, CrossAttentionModel
-from scripts.sources.models.efficient_coupled_mamba import EfficientCoupledMambaModel
-from scripts.sources.models.coupled_mamba_model import CoupledMambaModel
-from scripts.sources.dataset import MultimodalDataset
 from torchmetrics import Accuracy
 import torch.nn.functional as F
 import re
 import logging
-from pytorch_lightning.loggers import WandbLogger
 import torch.optim as optim
 import math
-sys.path.append(os.path.join(os.getcwd(), 'sleepfm-clinical'))
-from sleepfm.models.models import DiagnosisFinetuneFullLSTMCOXPH
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from base_system.base_system import BaseSystem
+from models.efficient_coupled_mamba import EfficientCoupledMambaModel
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -129,22 +123,8 @@ class MultimodalModel(nn.Module):
         self.ecg_aggregator = nn.Linear(self.factor_resolution_ecg, 1)
 
         # Initialize CoupledMambaModel
-        block_model = config.get('block_model', 'coupled_mamba')
-        match block_model:
-            case 'coupled_mamba':
-                MambaClass = EfficientCoupledMambaModel
-            case 'mamba_fusion':
-                MambaClass = MambaFusionModel
-            case 'attention':
-                MambaClass = AttentionModel
-            case 'joint_attention':
-                MambaClass = JointAttentionModel
-            case 'cross_attention':
-                MambaClass = CrossAttentionModel
-            case _:
-                raise ValueError(f"Unknown block_model: {block_model}")
         
-        self.coupled_mamba = MambaClass(
+        self.coupled_mamba = EfficientCoupledMambaModel(
             num_modalities=len(self.modality_names),
             **config.get('mamba_config', {})
         )
@@ -346,20 +326,16 @@ class LitMultimodalModel(BaseSystem):
     @property
     def step_args(self):
         # Return the keys that _step will generate
-        return ['logits', 'labels', 'hazards', 'event_time', 'is_event', 'stratum_ids']
+        return ['logits', 'labels', 'hazards', 'event_time', 'is_event',]
 
     def _step(self, batch):
         # Unpack batch
-        # Dataset returns: inputs, masks, labels, demo_features (optional), stratum_ids (optional), ids
+        # Dataset returns: inputs, masks, labels, demo_features (optional), ids
         if len(batch) == 5:
             inputs, masks, labels, demo_features, _ = batch
-            stratum_ids = None
-        elif len(batch) == 6:
-            inputs, masks, labels, demo_features, stratum_ids, _ = batch
         else:
             inputs, masks, labels, _ = batch
             demo_features = None
-            stratum_ids = None
 
         if demo_features is not None and demo_features.numel() == 0:
             demo_features = None
@@ -376,8 +352,6 @@ class LitMultimodalModel(BaseSystem):
             step_output['hazards'] = logits
             step_output['event_time'] = event_time
             step_output['is_event'] = is_event
-            if stratum_ids is not None:
-                step_output['stratum_ids'] = stratum_ids
 
         return step_output
     
@@ -428,7 +402,3 @@ class LitDemoBaselineModel(LitMultimodalModel):
     def __init__(self, n_demo_features, model_config, number_labels, **kwargs):
         super().__init__(model_config, number_labels, create_model=False, **kwargs)
         self.model = DemoBaselineModel(n_demo_features, model_config, number_labels)
-
-class LSTMModel(DiagnosisFinetuneFullLSTMCOXPH):
-    def __init__(self, embed_dim, num_heads, num_layers, num_classes, pooling_head=4, dropout=0.1, max_seq_length=6480):
-        super().__init__(embed_dim, num_heads, num_layers, num_classes, pooling_head, dropout, max_seq_length)

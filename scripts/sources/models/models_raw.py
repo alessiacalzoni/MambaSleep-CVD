@@ -1,11 +1,16 @@
 import contextlib
 import math
-
 import torch
+import sys
+import os
 import torch.nn.functional as F
 from torch import nn
 from loguru import logger
 from einops import rearrange
+import torch.optim as optim
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from base_system.base_system import BaseSystem
+from models.efficient_coupled_mamba import EfficientCoupledMambaModel
 
 class PatchEmbedECG(nn.Module):
     def __init__(self, in_channels, d_model, Fs, R_out):
@@ -272,11 +277,6 @@ class PatchEmbedEOG(nn.Module):
         tokens = self.layernorm(tokens)
         return tokens
 
-from scripts.sources.base_system.base_system import BaseSystem
-from scripts.sources.models.efficient_coupled_mamba import EfficientCoupledMambaModel
-import torch.optim as optim
-from pytorch_lightning.loggers import WandbLogger
-
 class RawMultimodalModel(nn.Module):
     def __init__(self, config, number_lables: int):
         super().__init__()
@@ -444,16 +444,11 @@ class LitRawMultimodalModel(BaseSystem):
     
     @property
     def step_args(self):
-        return ['logits', 'labels', 'hazards', 'event_time', 'is_event', 'stratum_ids']
+        return ['logits', 'labels', 'hazards', 'event_time', 'is_event']
 
     def _step(self, batch):
         # Base dataset returns 5-tuple: (inputs, masks, labels, demo_features, ids)
-        # Stratified dataset returns 6-tuple: (inputs, masks, labels, demo_features, stratum_ids, ids)
-        if len(batch) == 5:
-            inputs, masks, labels, demo_features, ids = batch
-            stratum_ids = None
-        else:
-            inputs, masks, labels, demo_features, stratum_ids, ids = batch
+        inputs, masks, labels, demo_features, ids = batch
 
         # demo_features may be None
         if demo_features is not None and demo_features.numel() == 0:
@@ -468,7 +463,5 @@ class LitRawMultimodalModel(BaseSystem):
             step_output['hazards'] = logits
             step_output['event_time'] = event_time
             step_output['is_event'] = is_event
-            if stratum_ids is not None:
-                step_output['stratum_ids'] = stratum_ids
 
         return step_output

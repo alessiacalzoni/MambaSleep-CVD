@@ -1,0 +1,7 @@
+csv_config:
+    target_outcome: ["angina", "cvd_death", "chf", "chd_death", "mi", "stroke"]
+    composite_outcome: False
+    imputing_method: "mask_events"
+
+wandb_config:
+    group_name: "sleep_FM_outcome_multilabel"

@@ -6,14 +6,9 @@ import math
 import logging
 import torch.utils.checkpoint as checkpoint
 
-# Try to import selective_scan_fn
-# try:
 from mamba_ssm.ops.selective_scan_interface import selective_scan_fn
 from mamba_ssm.ops.triton.layer_norm import RMSNorm
 from causal_conv1d import causal_conv1d_fn
-# except ImportError:
-#     selective_scan_fn = None
-#     causal_conv1d_fn = None
 
 class EfficientCoupledMambaBlock(nn.Module):
     """

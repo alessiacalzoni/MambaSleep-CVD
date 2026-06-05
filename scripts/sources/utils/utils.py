@@ -24,7 +24,7 @@ def read_csv_robust(filepath, **kwargs):
     except UnicodeDecodeError:
         return pd.read_csv(filepath, encoding='latin1', **kwargs)
 
-def extract_csv(original_csv_file: str, target_outcome: list[str], composite_outcome: bool = True, threshold_time: Optional[int] = None, imputing_method: str = "censor_date", remove_nan: Optional[bool] = None, demographic_csv_file: Optional[str] = None, demographic_stratification_var: Optional[list[str]] = None):
+def extract_csv(original_csv_file: str, target_outcome: list[str], composite_outcome: bool = True, imputing_method: str = "censor_date", demographic_csv_file: Optional[str] = None, demographic_stratification_var: Optional[list[str]] = None):
     """
     Extract the target outcome from the original CSV file.
     
@@ -32,8 +32,7 @@ def extract_csv(original_csv_file: str, target_outcome: list[str], composite_out
     - original_csv_file: Path to the original CSV file.
     - target_outcome: List of target outcome columns. By construction, the target outcome must be binary (0/1); no NaN inside the csv for outcomes
     - composite_outcome: Whether to consider the composite outcome or not (at least one of the target outcome must be present to consider the subject as having the outcome)
-    - threshold_time: The threshold time (years) for the event to be considered. If None, consider time to event (NB only for the composite outcome)
-    - remove_nan: Whether to remove rows with NaN values or impute the time with censdate
+    - imputing_method: Method to impute the time with censdate (options: "remove_events", "censor_date", "mask_events")
     - demographic_csv_file: Path to the demographic CSV file
     - demographic_stratification_var: List of demographic variables to use for stratification
     
@@ -41,10 +40,6 @@ def extract_csv(original_csv_file: str, target_outcome: list[str], composite_out
     - A pandas DataFrame containing the subject with target outcome and corresponding time. If demographic_csv_file is provided, also returns the demographic data (age and gender)
     """
 
-    if remove_nan is not None:
-        import warnings
-        warnings.warn("remove_nan is deprecated. Use imputing_method instead.", DeprecationWarning)
-        imputing_method = "remove_events" if remove_nan else "censor_date"
     assert imputing_method in ("remove_events", "censor_date", "mask_events")
 
     df = read_csv_robust(original_csv_file)
@@ -63,154 +58,13 @@ def extract_csv(original_csv_file: str, target_outcome: list[str], composite_out
 
     assert all([out in df.columns for out in target_outcome]), f"Target outcome {target_outcome} not found in the CSV file"
     
-    if threshold_time is not None:
-        assert threshold_time < 20, "Threshold time must refers to years"
-        threshold_time_days = threshold_time * 365 # days instead of years
-        
-        # Scenario 1: Threshold is NOT None --> CLASSIFICATION
-        # Output: id, outcome(s) columns. No time column.
-        # Logic: 
-        # Event=1 & Time > Threshold -> Outcome=0. 
-        # Event=0 & Cens < Threshold -> Drop.
-        # Event=0 & Cens >= Threshold -> Keep.
-        # Event=1 & Time <= Threshold -> Keep.
-        
-        # If composite_outcome is True: calculate the composite event/time, then apply threshold.
-        # If composite_outcome is False: apply threshold to each target outcome individually.
-        
-        if composite_outcome:
-            # 1. Identify events
-            # Check if any event occurred (1)
-            events_mask = (df[target_outcome] == 1).any(axis=1)
-            
-            # 2. Calculate Composite Time
-            # Create a df of times corresponding to the target outcomes
-            time_cols_names = [out + '_date' for out in target_outcome]
-            times_df = df[time_cols_names].copy()
-            times_df.columns = target_outcome
-            
-            # Consider times where the specific event happened (outcome == 1). min_event_time is nan if and only if all times are nan.
-            relevant_times = times_df.where(df[target_outcome] == 1)
-            
-            if imputing_method == "censor_date":
-                for col in target_outcome:
-                    # Check if this specific outcome occurred but has no date
-                    mask_impute = (df[col] == 1) & (relevant_times[col].isna())
-                    relevant_times.loc[mask_impute, col] = df.loc[mask_impute, 'censdate']
-            min_event_time = relevant_times.min(axis=1)
-            
-            final_outcome = pd.Series(0, index=df.index)
-            final_time = df['censdate'].copy()
-            
-            final_outcome[events_mask] = 1
-            valid_event_times = events_mask & min_event_time.notna()
-            final_time[valid_event_times] = min_event_time[valid_event_times]
-            
-            # 3. Filtering (Mask construction)
-            # Apply Threshold Logic
-            keep_mask = pd.Series(True, index=df.index)
-            
-            # Event (1): time > threshold -> outcome=0
-            change_event_late = events_mask & (final_time > threshold_time_days)
-            final_outcome[change_event_late] = 0
-            
-            # No Event (0): censdate < threshold -> Drop
-            # We only drop if it was originally 0 (no event at all) AND censdate is too short.
-            # If it was 1 but changed to 0 because event time > threshold, we keep it as 0.
-            
-            original_zeros = (~events_mask)
-            drop_early_cens = original_zeros & (final_time < threshold_time_days)
-            keep_mask[drop_early_cens] = False
-            
-            event_nan_time = events_mask & min_event_time.isna()
-            if imputing_method in ["remove_events", "mask_events"]:
-                # Handle NaN times for events
-                # Drop rows with event=1 but NaN time
-                keep_mask[event_nan_time] = False
-            elif imputing_method == "censor_date":
-                final_outcome[event_nan_time] = 1
+    # Outcomes > 1 AND Composite False
+    if len(target_outcome) > 1 and not composite_outcome:
+        mask_keep_global = pd.Series(True, index=df.index)
+        for outcome in target_outcome:
+            outcome_name = outcome
+            time_name = outcome_name + '_date' 
 
-            result_df['outcome'] = final_outcome.astype('Int64')
-            result_df = result_df[keep_mask]
-            
-        else:
-            # Non-composite: Apply to each column and drop if one event happend with nan time or event not happend but censdate < threshold
-            mask_keep_global = pd.Series(True, index=df.index)
-            
-            for outcome in target_outcome:
-                mask_impute_event = pd.Series(False, index=df.index)
-                time_col = outcome + '_date'
-                
-                # Event (1)
-                # If time > threshold --> outcome = 0
-                is_event = (df[outcome] == 1)
-                event_time = df[time_col]
-                
-                nan_mask = is_event & event_time.isna()
-                if imputing_method in ["remove_events", "mask_events"]:
-                    mask_keep_global[nan_mask] = False
-                elif imputing_method == "censor_date":
-                    mask_impute_event = nan_mask
-                    event_time = event_time.fillna(df['censdate'])
-
-                cond_event_change = is_event & (event_time > threshold_time_days)
-                res_col = df[outcome].copy()
-                res_col[cond_event_change] = 0
-                
-                cond_no_event_drop = (df[outcome] == 0) & (df['censdate'] < threshold_time_days)
-                mask_keep_global[cond_no_event_drop] = False
-                
-                result_df[outcome] = res_col.astype(int)
-
-                if imputing_method == "censor_date":
-                    result_df.loc[mask_impute_event, outcome] = 1
-                elif imputing_method == "mask_events":
-                    result_df.loc[nan_mask, outcome] = -1
-            
-            result_df = result_df[mask_keep_global]
-
-    else:
-        # Scenario 2: Threshold is None --> SURVIVAL ANALYSIS
-        
-        # Sub-scenario 2a: Outcomes > 1 AND Composite False
-        if len(target_outcome) > 1 and not composite_outcome:
-            mask_keep_global = pd.Series(True, index=df.index)
-            for outcome in target_outcome:
-                outcome_name = outcome
-                time_name = outcome_name + '_date' 
-
-                final_outcome = df[outcome_name].copy()
-                final_time = df['censdate'].copy()
-                
-                # If event=1, time = event_time
-                is_event = final_outcome == 1
-                event_times = df[time_name]
-                
-                # Update time where event=1 and time is not NaN
-                valid_times = is_event & event_times.notna()
-                final_time[valid_times] = event_times[valid_times]
-
-                nan_mask = is_event & event_times.isna()
-                if imputing_method == "remove_events":
-                    mask_keep_global[nan_mask] = False
-                elif imputing_method == "censor_date":
-                    final_outcome[nan_mask] = 1
-                    final_time[nan_mask] = df.loc[nan_mask, 'censdate'].values
-                elif imputing_method == "mask_events":
-                    final_outcome[nan_mask] = -1
-                    final_time[nan_mask] = -1
-                
-                result_df[outcome_name] = final_outcome.astype('Int64')
-                result_df[outcome_name + '_time'] = final_time
-            
-            result_df = result_df[mask_keep_global]
-        
-        # Calculate Event and Time
-        elif len(target_outcome) == 1:
-            # Single outcome case
-            outcome_name = target_outcome[0]
-            time_name = outcome_name + '_date'
-            
             final_outcome = df[outcome_name].copy()
             final_time = df['censdate'].copy()
             
@@ -221,12 +75,10 @@ def extract_csv(original_csv_file: str, target_outcome: list[str], composite_out
             # Update time where event=1 and time is not NaN
             valid_times = is_event & event_times.notna()
             final_time[valid_times] = event_times[valid_times]
-            
-            # NaN Handling
-            keep_mask = pd.Series(True, index=df.index)
+
             nan_mask = is_event & event_times.isna()
             if imputing_method == "remove_events":
-                keep_mask[nan_mask] = False
+                mask_keep_global[nan_mask] = False
             elif imputing_method == "censor_date":
                 final_outcome[nan_mask] = 1
                 final_time[nan_mask] = df.loc[nan_mask, 'censdate'].values
@@ -234,55 +86,89 @@ def extract_csv(original_csv_file: str, target_outcome: list[str], composite_out
                 final_outcome[nan_mask] = -1
                 final_time[nan_mask] = -1
             
-            result_df['outcome'] = final_outcome.astype('Int64')
-            result_df['time'] = final_time
-            result_df = result_df[keep_mask]
-                
-        else:
-            # Composite True (and len > 1)
-            # 1. Identify events
-            events_mask = (df[target_outcome] == 1).any(axis=1)
+            result_df[outcome_name] = final_outcome.astype('Int64')
+            result_df[outcome_name + '_time'] = final_time
+        
+        result_df = result_df[mask_keep_global]
+    
+    # Calculate Event and Time
+    elif len(target_outcome) == 1:
+        # Single outcome case
+        outcome_name = target_outcome[0]
+        time_name = outcome_name + '_date'
+        
+        final_outcome = df[outcome_name].copy()
+        final_time = df['censdate'].copy()
+        
+        # If event=1, time = event_time
+        is_event = final_outcome == 1
+        event_times = df[time_name]
+        
+        # Update time where event=1 and time is not NaN
+        valid_times = is_event & event_times.notna()
+        final_time[valid_times] = event_times[valid_times]
+        
+        # NaN Handling
+        keep_mask = pd.Series(True, index=df.index)
+        nan_mask = is_event & event_times.isna()
+        if imputing_method == "remove_events":
+            keep_mask[nan_mask] = False
+        elif imputing_method == "censor_date":
+            final_outcome[nan_mask] = 1
+            final_time[nan_mask] = df.loc[nan_mask, 'censdate'].values
+        elif imputing_method == "mask_events":
+            final_outcome[nan_mask] = -1
+            final_time[nan_mask] = -1
+        
+        result_df['outcome'] = final_outcome.astype('Int64')
+        result_df['time'] = final_time
+        result_df = result_df[keep_mask]
             
-            # 2. Calculate Composite Time
-            time_cols_names = [col + '_date' for col in target_outcome]
-            times_df = df[time_cols_names].copy()
-            relevant_times = times_df.where(df[target_outcome] == 1)
+    else:
+        # Composite True (and len > 1)
+        # 1. Identify events
+        events_mask = (df[target_outcome] == 1).any(axis=1)
+        
+        # 2. Calculate Composite Time
+        time_cols_names = [col + '_date' for col in target_outcome]
+        times_df = df[time_cols_names].copy()
+        relevant_times = times_df.where(df[target_outcome] == 1)
 
-            if imputing_method == "censor_date":
-                for col in target_outcome:
-                    # Check if this specific outcome occurred but has no date
-                    mask_impute = (df[col] == 1) & (relevant_times[col].isna())
-                    relevant_times.loc[mask_impute, col] = df.loc[mask_impute, 'censdate']
-            min_event_time = relevant_times.min(axis=1)
-            
-            final_outcome = pd.Series(0, index=df.index)
-            final_time = df['censdate'].copy()
-            
-            final_outcome[events_mask] = 1
-            valid_event_times = events_mask & min_event_time.notna()
-            final_time[valid_event_times] = min_event_time[valid_event_times]
-            
-            # 3. Filtering (NaN Handling)
-            keep_mask = pd.Series(True, index=df.index)
-            
-            any_nan_event = pd.Series(False, index=df.index)
+        if imputing_method == "censor_date":
             for col in target_outcome:
-                t_col = col + '_date'
                 # Check if this specific outcome occurred but has no date
-                cond = (df[col] == 1) & (df[t_col].isna())
-                any_nan_event = any_nan_event | cond
-            if imputing_method == "remove_events":
-                keep_mask[any_nan_event] = False
-            elif imputing_method == "censor_date":
-                final_outcome[any_nan_event] = 1
-                final_time[any_nan_event] = df.loc[any_nan_event, 'censdate'].values
-            elif imputing_method == "mask_events":
-                final_outcome[any_nan_event] = -1
-                final_time[any_nan_event] = -1
+                mask_impute = (df[col] == 1) & (relevant_times[col].isna())
+                relevant_times.loc[mask_impute, col] = df.loc[mask_impute, 'censdate']
+        min_event_time = relevant_times.min(axis=1)
+        
+        final_outcome = pd.Series(0, index=df.index)
+        final_time = df['censdate'].copy()
+        
+        final_outcome[events_mask] = 1
+        valid_event_times = events_mask & min_event_time.notna()
+        final_time[valid_event_times] = min_event_time[valid_event_times]
+        
+        # 3. Filtering (NaN Handling)
+        keep_mask = pd.Series(True, index=df.index)
+        
+        any_nan_event = pd.Series(False, index=df.index)
+        for col in target_outcome:
+            t_col = col + '_date'
+            # Check if this specific outcome occurred but has no date
+            cond = (df[col] == 1) & (df[t_col].isna())
+            any_nan_event = any_nan_event | cond
+        if imputing_method == "remove_events":
+            keep_mask[any_nan_event] = False
+        elif imputing_method == "censor_date":
+            final_outcome[any_nan_event] = 1
+            final_time[any_nan_event] = df.loc[any_nan_event, 'censdate'].values
+        elif imputing_method == "mask_events":
+            final_outcome[any_nan_event] = -1
+            final_time[any_nan_event] = -1
 
-            result_df['outcome'] = final_outcome.astype('Int64')
-            result_df['time'] = final_time
-            result_df = result_df[keep_mask]
+        result_df['outcome'] = final_outcome.astype('Int64')
+        result_df['time'] = final_time
+        result_df = result_df[keep_mask]
             
     add_medications_col = False
 
@@ -341,37 +227,6 @@ def aggregate_medications_col(df, csv_file):
 
     return df
 
-def split_dataset(dataset, test_size=0.2, random_state=42):
-    """
-    Split a PyTorch Dataset or Subset into training and validation subsets.
-
-    Parameters:
-    - dataset: The dataset to split (must implement `__len__`).
-    - test_size: Proportion of the dataset to include in the validation split.
-    - random_state: Random seed for reproducibility.
-
-    Returns:
-    - train_dataset: Subset for training.
-    - val_dataset: Subset for validation.
-    """
-    # Get the total number of samples in the dataset
-    num_samples = len(dataset)
-
-    # Generate a list of indices
-    indices = list(range(num_samples))
-
-    # Split indices into training and validation sets
-    train_indices, val_indices = train_test_split(indices, test_size=test_size, random_state=random_state)
-
-    # Create Subsets for train and validation
-    train_dataset = torch.utils.data.Subset(dataset, train_indices)
-    val_dataset = torch.utils.data.Subset(dataset, val_indices)
-
-    print(f"Train instances: {len(train_dataset)}")
-    print(f"Validation instances: {len(val_dataset)}")
-
-    return train_dataset, val_dataset
-
 def dataframe_split_stratified(df_to_split: pd.DataFrame, config_csv: dict, test: Union[float, list], val: Union[float, list], random_state: int=42, save: bool=False, use_cache: bool=True, path_to_folder_reproducibility: str='', json_file_name: str=''):
     '''
     Split a dataframe into train, validation and test sets preserving the distribution of labels.
@@ -385,7 +240,7 @@ def dataframe_split_stratified(df_to_split: pd.DataFrame, config_csv: dict, test
     #     df_test = df_to_split[df_to_split['id'].isin(split['test'])]
     #     return df_train, df_val, df_test
     
-    original_df = extract_csv(original_csv_file=config_csv['original_csv_file'], target_outcome='all', composite_outcome=False, threshold_time=config_csv['threshold_time'], imputing_method="censor_date", demographic_csv_file=config_csv['demographic_csv_file'], demographic_stratification_var=config_csv['demographic_stratification_var'])
+    original_df = extract_csv(original_csv_file=config_csv['original_csv_file'], target_outcome='all', composite_outcome=False, imputing_method="censor_date", demographic_csv_file=config_csv['demographic_csv_file'], demographic_stratification_var=config_csv['demographic_stratification_var'])
     df = pd.merge(df_to_split, original_df, how='right')
     df_test = pd.DataFrame([])
     df_val = pd.DataFrame([])
