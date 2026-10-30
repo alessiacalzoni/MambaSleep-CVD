@@ -188,7 +188,7 @@ class ModelEvaluator:
                         cindex = cindex_metric(estimate=ht, time=tt, event=et)
                         cindex = float(cindex.item())
                     except Exception as e:
-                        logger.warning(f"TorchSurv C-Index calculation failed for {label_name}: {e}. Returning None.")
+                        logger.warning(f"TorchSurv C-Index calculation failed for {name}: {e}. Returning None.")
                         cindex = None
                     metrics["c_index"] = cindex
                 except Exception:
@@ -336,7 +336,7 @@ class ModelEvaluator:
         
         return results_stats
 
-    def perform_bootstrapping(self, predictions, labels, probabilities):
+    def perform_bootstrapping(self, predictions, labels):
         """Run bootstrapping and merger metrics."""
         logger.info(f"Running {self.n_bootstraps} bootstrap iterations...")
         
@@ -356,9 +356,6 @@ class ModelEvaluator:
             # Get resampled data
             res_preds = predictions[indices]
             res_labels = labels[indices]
-            res_probs = probabilities[indices] if probabilities is not None else None
-            
-            # Evaluate
             res = self.evaluate_survival(res_preds, res_labels)
             
             # Check validity of results (e.g. check if at least one c-index was calculated)
@@ -399,7 +396,7 @@ class ModelEvaluator:
         results = self.evaluate_survival(predictions, labels)
         # Perform bootstrapping if requested
         if self.n_bootstraps > 0:
-            bootstrap_stats = self.perform_bootstrapping(predictions, labels, probabilities)
+            bootstrap_stats = self.perform_bootstrapping(predictions, labels)
             
             # Per label
             if "per_label_metrics" in bootstrap_stats:

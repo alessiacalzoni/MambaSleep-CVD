@@ -282,7 +282,7 @@ class MultimodalDataset(Dataset):
         data_path = (
             os.path.join(self.data_folder, "raw", f"shhs{self.n_exam}-{int(row['id'])}.hdf5")
             if self.input_mode == "raw"
-            else f"shhs{self.n_exam}-{int(row['id'])}
+            else os.path.join(self.data_folder, "features", f"shhs{self.n_exam}-{int(row['id'])}")
         )
 
         try:

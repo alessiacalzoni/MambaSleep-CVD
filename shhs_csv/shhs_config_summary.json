@@ -1,0 +1,39 @@
+{
+    "id_var": "nsrrid",
+    "previous_cvd_variables": [
+        "afibprevalent",
+        "prev_mi",
+        "prev_mip",
+        "prev_stk",
+        "prev_ang",
+        "prev_chf",
+        "prev_revpro"
+    ],
+    "outcome_variables": [
+        "mi",
+        "mi_fatal",
+        "mi_death",
+        "mip",
+        "stroke",
+        "stk_fatal",
+        "chd_death",
+        "cvd_death",
+        "angina",
+        "revasc_proc",
+        "ptca",
+        "cabg",
+        "chf"
+    ],
+    "outcome_time_mapping": {
+        "mi": "mi_date",
+        "mip": "mip_date",
+        "stroke": "stroke_date",
+        "chd_death": "chd_death_date",
+        "cvd_death": "cvd_death_date",
+        "angina": "angina_date",
+        "revasc_proc": "revasc_proc_date",
+        "ptca": "ptca_date",
+        "cabg": "cabg_date",
+        "chf": "chf_date"
+    }
+}

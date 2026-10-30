@@ -3,7 +3,7 @@ paths:
     checkpoint: "checkpoints"
 
 csv_config:
-    original_csv_file: "shhs_csv/shhs1_events_summary_from_summary_survival.csv"
+    original_csv_file: "shhs_csv/results/shhs1_events_summary_from_summary_survival_not_filtered.csv"
     demographic_csv_file: "shhs_csv/shhs1-dataset-0.21.0.csv"
     demographic_stratification_var: ['gender', 'age_s', 'BMI', 'med']
 

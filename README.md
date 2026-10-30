@@ -10,7 +10,7 @@ Two input pipelines are supported via a single `--mode` flag:
 
 | Mode | Description | Input data |
 |------|-------------|------------|
-| `features` | Multimodal model on pre-extracted embeddings (e.g. USleep, DANA) | `.npy` feature files under `data_folder/features/` |
+| `features` | Multimodal model on pre-extracted embeddings (USleep; **Self-DANA** for ECG @ 5 s — encoder release pending) | `.npy` feature files under `data_folder/features/` |
 | `raw` | End-to-end model with built-in unimodal encoders | `.hdf5` raw signals under `data_folder/raw/` |
 
 Both modes share the same dataset module, survival loss, and entry-point scripts.
@@ -21,6 +21,7 @@ Both modes share the same dataset module, survival loss, and entry-point scripts
 MambaSleep-CVD/
 ├── requirements.txt          # Python dependencies
 ├── README.md
+├── checkpoints/              # Pre-trained Lightning .ckpt (see below)
 ├── scripts/
 │   ├── train.py              # Unified training script
 │   ├── eval.py               # Unified evaluation script
@@ -34,7 +35,7 @@ MambaSleep-CVD/
 │       ├── utils/            # CSV handling, splits, samplers
 │       └── configs/          # Example YAML configs
 │           ├── USleep/       # Feature configs (USleep embeddings)
-│           ├── DANA/         # Feature configs (DANA embeddings)
+│           ├── DANA/         # Self-DANA ECG @ 5 s (configs; encoder repo/weights TBD)
 │           └── raw/          # Raw-signal configs
 ```
 
@@ -83,13 +84,47 @@ pip install wandb
 
 ## Data & checkpoints
 
-The following are **not** distributed with this repository and must be prepared locally:
+**Included in this repository:** pre-trained **checkpoints** under `checkpoints/` for **USleep** and **raw** Coupled Mamba runs (PyTorch Lightning `.ckpt`; layout below). **Self-DANA** encoder weights and the code repository to build ECG embeddings are **not yet publicly available**; configs under `scripts/sources/configs/DANA/` are provided for when that release is ready.
+
+**Prepare locally:**
 
 - PSG recordings and/or pre-extracted feature files from SHHS
-- Outcome and demographic CSV files from https://sleepdata.org/datasets/shhs/files/datasets
-- **Trained model checkpoints** (`.ckpt`)
+- Outcome and demographic CSV files from https://sleepdata.org/datasets/shhs/files/datasets  
+  Place the official NSRR files under `shhs_csv/` (at minimum `shhs-cvd-summary-dataset-0.21.0.csv`, `shhs-cvd-events-dataset-0.21.0.csv`, `shhs1-dataset-0.21.0.csv`, `shhs2-dataset-0.21.0.csv`).  
+  Run `notebooks/build_shhs_outcome_from_cvd_summary.ipynb` to write `shhs_csv/results/shhs1_events_summary_from_summary_survival_not_filtered.csv` and `shhs2_events_summary_from_summary_survival_not_filtered_events.csv`. SHHS2 uses visit-relative times and post–visit-2 reconciliation from the CVD events file.
+  `shhs1-dataset` / `shhs2-dataset` are the visit cohort tables (demographics, meds, …); the notebook also reads **`stdatep`** from `shhs2-dataset` to anchor SHHS2 follow-up times.
+
+### Checkpoints
+
+Weights live in `checkpoints/` (same path as `paths.checkpoint` in YAML). Each experiment folder contains **`best-checkpoint.ckpt`**.
+
+Released runs use short folder names (e.g. `survival_all_demo`, `survival_no_demo`) under `features/USleep`, `features/DANA` or `raw`:
+
+```
+checkpoints/
+├── features/
+│   ├── USleep/          # ECG embeddings @ 1 s (USleep configs)
+│   │   ├── survival_all_demo/
+│   │   │   └── best-checkpoint.ckpt
+│   │   └── survival_no_demo/
+│   │       └── best-checkpoint.ckpt
+│   └── DANA/            # ECG embeddings @ 5 s (DANA configs)
+│       └── survival_all_demo/
+│           └── best-checkpoint.ckpt
+└── raw/
+    └── survival_all_demo/
+        └── best-checkpoint.ckpt
+```
+
+Use the **matching** global config for evaluation (folder `survival_no_demo` → `scripts/sources/configs/USleep/ablation/survival_from_summary_no_demo.yaml`, etc.). Pass **`--checkpoint_folder`** to the directory that directly contains the `.ckpt`, not the file path.
+
 
 ### Expected data layout
+
+**USleep embeddings (`--mode features`, configs under `scripts/sources/configs/USleep/`).**  
+Generate per-channel feature sequences with **[SLEEPYLAND](https://github.com/biomedical-signal-processing/sleepyland)** (U-Sleep encoder). Pre-trained weights are distributed via the [SLEEPYLAND Docker image](https://hub.docker.com/r/bspsupsi/sleepyland). Export **1 s** resolution embeddings and copy them into the tree below (channel names must match the YAML `model_config.modalities`). Typical USleep feature dimension is **6** per time step; arrays are stored as `(T, F)` `.npy` files.
+
+**Self-DANA (ECG @ 5 s)** — configs in `scripts/sources/configs/DANA/` use ECG features at **`res_5s`** (see `resolution_input_embedding_s`). The **Self-DANA repository and pretrained encoder weights are not yet publicly available**, so new ECG embeddings for this branch cannot be generated from this release alone. When available, ECG files should follow `ECG/res_5s/ECG/shhs1-{subject_id}.npy` (EEG/EOG typically remain USleep **`res_1s`** as above).
 
 **Features mode** (`--mode features`):
 
@@ -144,12 +179,12 @@ Checkpoints are saved under `paths.checkpoint` as defined in the config (TensorB
 
 ## Evaluation
 
-Evaluation requires a **local checkpoint folder** containing a `best-*.ckpt` file.
+Point `--checkpoint_folder` at a directory under `checkpoints/` that contains a `best*.ckpt` file (see [Checkpoints](#checkpoints)).
 
 ```bash
 python scripts/eval.py \
   --mode features \
-  --checkpoint_folder path/to/your/checkpoint/folder \
+  --checkpoint_folder checkpoints/features/USleep/survival_all_demo \
   --config scripts/sources/configs/USleep/survival_from_summary_all_demo.yaml \
   --task_config scripts/sources/configs/multilabel_task.yaml \
   --outcome_csv_file_path path/to/outcomes.csv \
@@ -187,6 +222,17 @@ Ablation configs under `scripts/sources/configs/*/ablation/` vary modalities and
 
 ## Citation & license
 
-If you use this code, please cite the associated publication.
+If you use this code or the released checkpoints, please cite:
+
+```bibtex
+@article{MambaSleepCVD_2026,
+  title   = {MambaSleepCVD for prediction of long term cardiovascular outcomes from polysomnography},
+  author  = {Calzoni, Alessia and Dei Rossi, Alvise and Monachino, Giuliana and Zanchi, Beatrice and Fiorillo, Luigi and Savardi, Mattia and Faraci, Francesca Dalia and Signoroni, Alberto},
+  journal = {npj Digital Medicine},
+  year    = {2026},
+  doi     = {10.1038/s41746-026-03450-3},
+  url     = {https://doi.org/10.1038/s41746-026-03450-3}
+}
+```
 
 See [`LICENSE`](LICENSE) for licensing terms.

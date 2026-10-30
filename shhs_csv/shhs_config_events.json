@@ -1,0 +1,24 @@
+{
+    "id_var": "nsrrid",
+    "previous_cvd_variables": [
+        "afibprevalent",
+        "prev_mi",
+        "prev_mip",
+        "prev_stk",
+        "prev_ang",
+        "prev_chf",
+        "prev_revpro"
+    ],
+    "outcome_variables_mapping": {
+        "1": "Angina",
+        "2": "Angioplasty",
+        "3": "CABG",
+        "4": "CHF",
+        "5": "MI",
+        "6": "MIP",
+        "7": "PTCA",
+        "8": "Revasc_proc",
+        "9": "Stent",
+        "10": "Stroke"
+    }
+}
