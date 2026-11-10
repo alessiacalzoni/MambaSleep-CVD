@@ -90,13 +90,13 @@ pip install wandb
 
 - PSG recordings and/or pre-extracted feature files from SHHS
 - Outcome and demographic CSV files from https://sleepdata.org/datasets/shhs/files/datasets  
-  Place the official NSRR files under `shhs_csv/` (at minimum `shhs-cvd-summary-dataset-0.21.0.csv`, `shhs-cvd-events-dataset-0.21.0.csv`, `shhs1-dataset-0.21.0.csv`, `shhs2-dataset-0.21.0.csv`).  
-  Run `notebooks/build_shhs_outcome_from_cvd_summary.ipynb` to write `shhs_csv/results/shhs1_events_summary_from_summary_survival_not_filtered.csv` and `shhs2_events_summary_from_summary_survival_not_filtered_events.csv`. SHHS2 uses visit-relative times and post–visit-2 reconciliation from the CVD events file.
-  `shhs1-dataset` / `shhs2-dataset` are the visit cohort tables (demographics, meds, …); the notebook also reads **`stdatep`** from `shhs2-dataset` to anchor SHHS2 follow-up times.
+Place the official NSRR files under `shhs_csv/` (at minimum `shhs-cvd-summary-dataset-0.21.0.csv`, `shhs-cvd-events-dataset-0.21.0.csv`, `shhs1-dataset-0.21.0.csv`, `shhs2-dataset-0.21.0.csv`).  
+Run `notebooks/build_shhs_outcome_from_cvd_summary.ipynb` to write `shhs_csv/results/shhs1_events_summary_from_summary_survival_not_filtered.csv` and `shhs2_events_summary_from_summary_survival_not_filtered_events.csv`. SHHS2 uses visit-relative times and post–visit-2 reconciliation from the CVD events file.
+`shhs1-dataset` / `shhs2-dataset` are the visit cohort tables (demographics, meds, …); the notebook also reads `stdatep` from `shhs2-dataset` to anchor SHHS2 follow-up times.
 
 ### Checkpoints
 
-Weights live in `checkpoints/` (same path as `paths.checkpoint` in YAML). Each experiment folder contains **`best-checkpoint.ckpt`**.
+Weights live in `checkpoints/` (same path as `paths.checkpoint` in YAML). Each experiment folder contains `best-checkpoint.ckpt`.
 
 Released runs use short folder names (e.g. `survival_all_demo`, `survival_no_demo`) under `features/USleep`, `features/DANA` or `raw`:
 
@@ -116,15 +116,14 @@ checkpoints/
         └── best-checkpoint.ckpt
 ```
 
-Use the **matching** global config for evaluation (folder `survival_no_demo` → `scripts/sources/configs/USleep/ablation/survival_from_summary_no_demo.yaml`, etc.). Pass **`--checkpoint_folder`** to the directory that directly contains the `.ckpt`, not the file path.
-
+Use the **matching** global config for evaluation (folder `survival_no_demo` → `scripts/sources/configs/USleep/ablation/survival_from_summary_no_demo.yaml`, etc.). Pass `--checkpoint_folder` to the directory that directly contains the `.ckpt`, not the file path.
 
 ### Expected data layout
 
-**USleep embeddings (`--mode features`, configs under `scripts/sources/configs/USleep/`).**  
+**USleep embeddings (**`--mode features`**, configs under** `scripts/sources/configs/USleep/`**).**  
 Generate per-channel feature sequences with **[SLEEPYLAND](https://github.com/biomedical-signal-processing/sleepyland)** (U-Sleep encoder). Pre-trained weights are distributed via the [SLEEPYLAND Docker image](https://hub.docker.com/r/bspsupsi/sleepyland). Export **1 s** resolution embeddings and copy them into the tree below (channel names must match the YAML `model_config.modalities`). Typical USleep feature dimension is **6** per time step; arrays are stored as `(T, F)` `.npy` files.
 
-**Self-DANA (ECG @ 5 s)** — configs in `scripts/sources/configs/DANA/` use ECG features at **`res_5s`** (see `resolution_input_embedding_s`). The **Self-DANA repository and pretrained encoder weights are not yet publicly available**, so new ECG embeddings for this branch cannot be generated from this release alone. When available, ECG files should follow `ECG/res_5s/ECG/shhs1-{subject_id}.npy` (EEG/EOG typically remain USleep **`res_1s`** as above).
+**Self-DANA (ECG @ 5 s)** — configs in `scripts/sources/configs/DANA/` use ECG features at `res_5s` (see `resolution_input_embedding_s`). The **Self-DANA repository and pretrained encoder weights are not yet publicly available**, so new ECG embeddings for this branch cannot be generated from this release alone. When available, ECG files should follow `ECG/res_5s/ECG/shhs1-{subject_id}.npy` (EEG/EOG typically remain USleep `res_1s` as above).
 
 **Features mode** (`--mode features`):
 
